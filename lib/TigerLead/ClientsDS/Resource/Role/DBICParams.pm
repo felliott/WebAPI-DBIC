@@ -25,7 +25,7 @@ sub malformed_request {
 }
 
 
-# used to a) define order that params are handled,
+# used to a) define order that certain params are handled,
 # and b) to force calling of a handler even if param is missing
 sub get_param_order {
     return qw(page rows order);
@@ -73,16 +73,20 @@ sub handle_request_params {
 
 sub _handle_rows_param {
     my ($self, $value) = @_;
+
     $value = 30 unless defined $value;
     $self->set( $self->set->search_rs(undef, { rows => $value }) );
+
     return;
 }
 
 
 sub _handle_page_param {
     my ($self, $value) = @_;
+
     $value = 1 unless defined $value;
     $self->set( $self->set->search_rs(undef, { page => $value }) );
+
     return;
 }
 
@@ -95,11 +99,14 @@ sub _handle_rollback_param { }
 
 sub _handle_me_param {
     my ($self, $value, $param) = @_;
+
     # we use me.relation.field=... to refer to relations via this param
     # so the param can be recognized by the leading 'me.'
     # but we strip off the leading 'me.' if there's a me.foo.bar
     $param =~ s/^me\.//x if $param =~ m/^me\.\w+\.\w+/x;
+
     $self->set( $self->set->search_rs({ $param => $value }) );
+
     return;
 }
 
@@ -117,7 +124,7 @@ sub _handle_prefetch_param {
 
         my $rel = $result_class->relationship_info($prefetch);
 
-        # limit to simple single relationships, e.g., belongs_to
+        # limit to simple single relationships, e.g., belongs_to, for now
         $self->throwable->throw_bad_request(400, errors => [{
                     $prefetch => "not a valid relationship",
                     _meta => {
@@ -135,6 +142,7 @@ sub _handle_prefetch_param {
     $self->prefetch({ %prefetch });
 
     delete $prefetch{self};
+
     $self->set( $self->set->search_rs(undef, { prefetch => [ keys %prefetch ] }))
         if %prefetch;
 
@@ -154,12 +162,15 @@ sub _handle_fields_param {
     }
 
     for my $clause (@columns) {
+
         # we take care to avoid injection risks
         my ($field) = ($clause =~ /^ ([a-z0-9_\.]*) $/x);
+
         $self->throwable->throw_bad_request(400, errors => [{
             parameter => "invalid fields clause",
             _meta => { fields => $field, }, # XXX
         }]) if not defined $field;
+
         # sadly columns=>[...] doesn't work to limit the fields of prefetch relations
         # so we disallow that for now. It's possible we could achieve the same effect
         # using explicit join's for non-has-many rels, or perhaps using
@@ -168,6 +179,7 @@ sub _handle_fields_param {
             parameter => "invalid fields clause - can't refer to prefetch relations at the moment",
             _meta => { fields => $field, }, # XXX
         }]) if $field =~ m/\./;
+
     }
 
     $self->set( $self->set->search_rs(undef, { columns => \@columns }) )
@@ -186,14 +198,17 @@ sub _handle_order_param {
     }
 
     for my $clause (split /\s*,\s*/x, $value) {
+
         # we take care to avoid injection risks
         my ($field, $dir) = ($clause =~ /^ ([a-z0-9_\.]*)\b (?:\s+(asc|desc))? \s* $/xi);
+
         unless (defined $field) {
             $self->throwable->throw_bad_request(400, errors => [{
                 parameter => "invalid order clause",
                 _meta => { order => $clause, }, # XXX
             }]);
         }
+
         $dir ||= 'asc';
         push @order_spec, { "-$dir" => $field };
     }
@@ -210,12 +225,16 @@ sub _handle_distinct_param {
     my @errors;
 
     # these restrictions avoid edge cases we don't want to deal with yet
+
     push @errors, "distinct param requires order param"
         unless $self->param('order');
+
     push @errors, "distinct param requires fields param"
         unless $self->param('fields');
+
     push @errors, "distinct param requires fields and orders parameters to have same value"
         unless $self->param('fields') eq $self->param('order');
+
     my $errors = join(", ", @errors);
     die "$errors\n" if $errors; # TODO throw?
 

@@ -49,6 +49,7 @@ sub decode_rich_parameters { # perhaps should live in a util library and be impo
     for my $key_raw (keys %$raw_params) {
 
         # parameter names with a ~json suffix have JSON encoded values
+        # XXX this ought to s/~(\w+)$// and then dispatch on $1
         my $is_json;
         (my $key_base = $key_raw) =~ s/~json$//
             and $is_json = 1;

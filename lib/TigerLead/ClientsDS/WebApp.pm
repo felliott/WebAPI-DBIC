@@ -1,5 +1,3 @@
-#!/usr/bin/env perl
-
 package WebAPI::DBIC::WebApp;
 
 use strict;
@@ -31,18 +29,10 @@ require DBIx::Class::SQLMaker;
 require DBIx::Class::Storage::DBI::Pg;
 
 
-my $in_production = ($ENV{TL_ENVIRONMENT} eq 'production');
-
-my $opt_writable = 1;
+my $opt_writable = 1; # XXX
 
 
-my $schema = WebAPI::Schema::Corp->new_default_connect(
-    {},
-    # connect to yesterdays snapshot because we make edits to the db
-    # XXX should really have a better approach for this!
-    "corp",
-    #"corp_snapshot_previous",
-);
+my $schema = WebAPI::Schema::Corp->new_default_connect( {}, "corp" );
 
 
 {
@@ -191,12 +181,12 @@ sub mk_generic_dbic_item_set_routes {
 
 my @routes;
 
-if (0) { # all!
+if (0) { # expose ALL relations and relationships in the schema!
+
     my %source_names = map { $_ => 1 } $schema->sources;
     for my $source_names ($schema->sources) {
         my $result_source = $schema->source($source_names);
         next unless $result_source->name =~ /^[\w\.]+$/x;
-        #my %relationships;
         for my $rel_name ($result_source->relationships) {
             my $rel = $result_source->relationship_info($rel_name);
         }
@@ -236,7 +226,7 @@ while (my $r = shift @routes) {
         target => sub {
             my $request = shift; # url args remain in @_
 
-#local $SIG{__DIE__} = \&Carp::confess;
+            #local $SIG{__DIE__} = \&Carp::confess;
 
             my %resource_args = (
                 writable => $opt_writable,
@@ -247,17 +237,21 @@ while (my $r = shift @routes) {
 
             warn "Running machine for $resource_class (with @{[ keys %resource_args ]})\n"
                 if $ENV{TL_ENVIRONMENT} eq 'development';
+
             my $app = WebAPI::DBIC::Machine->new(
                 resource => $resource_class,
                 debris   => \%resource_args,
-                tracing => !$in_production,
+                tracing => 1, # XXX
             )->to_app;
+
             my $resp = eval { $app->($request->env) };
             #Dwarn $resp;
+
             if ($@) { # XXX report and rethrow
                 Dwarn [ "EXCEPTION from app: $@" ];
                 die; ## no critic (ErrorHandling::RequireCarping)
             }
+
             return $resp;
         },
     );

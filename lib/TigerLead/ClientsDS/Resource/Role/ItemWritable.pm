@@ -44,7 +44,7 @@ around 'allowed_methods' => sub {
 sub delete_resource { return $_[0]->item->delete }
 
 
-sub _update_embedded_resources {
+sub _update_embedded_resources { # see update_resource below
     my ($self, $item, $hal, $result_class) = @_;
 
     my $links    = delete $hal->{_links};
@@ -97,13 +97,16 @@ sub _update_embedded_resources {
 
 sub update_resource {
     my ($self, $hal, %opts) = @_;
+
     my $is_put_replace = delete $opts{is_put_replace};
+
     croak "update_resource: invalid options: @{[ keys %opts ]}"
         if %opts;
 
     my $schema = $self->item->result_source->schema;
+
     # XXX perhaps the transaction wrapper belongs higher in the stack
-    # but it has to be below the auth layer which switches schemas
+    # but (I think) it has to be below the auth layer which switches schemas
     $schema->txn_do(sub {
 
         my $item;
@@ -112,7 +115,7 @@ sub update_resource {
 
             # Using delete() followed by create() is a strict implementation
             # of treating PUT on an item as a REPLACE, but it might not be ideal.
-            # Specifically it requires any FKs to be DEFERRED and it'll less
+            # Specifically it requires any FKs to be DEFERRED and it'll be less
             # efficient than a simple UPDATE. There's also a concern that if
             # the REST API only has a partial view of the resource, ie not all
             # columns, then do we want the original deleted if the 'hidden'
@@ -123,9 +126,10 @@ sub update_resource {
             # we require PK fields to at least be defined
             # XXX we ought to check that they match the URL since a PUT is
             # required to store the entity "under the supplied Request-URI".
-            # XXX throw proper exception
-            defined $hal->{$_} or die "missing PK '$_'\n"
-                for $self->set->result_source->primary_columns;
+            for ($self->set->result_source->primary_columns) {
+                # XXX should throw proper exception
+                defined $hal->{$_} or die "missing PK '$_'\n"
+            }
 
             my $old_item = $self->item; # XXX might already be gone since the find()
             $old_item->delete if $old_item; # XXX might already be gone since the find()

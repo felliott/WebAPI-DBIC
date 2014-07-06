@@ -36,7 +36,7 @@ has throwable => (
 sub render_item_as_plain {
     my ($self, $item) = @_;
     my $data = { $item->get_columns }; # XXX ?
-    # DateTimes
+    # XXX DateTimes?
     return $data;
 }
 
@@ -51,6 +51,7 @@ sub path_for_item {
 
     return $url;
 }
+
 
 # Uses the router to find the route that matches the given parameter hash
 # returns nothing if there's no match, else
@@ -71,17 +72,22 @@ sub uri_for { ## no critic (RequireArgUnpacking)
 
 sub render_item_into_body {
     my ($self, $item) = @_;
+
     # XXX ought to be a cloned request, with tweaked url/params?
     my $item_request = $self->request;
+
     # XXX shouldn't hard-code GenericItemDBIC here
     my $item_resource = WebAPI::DBIC::Resource::GenericItemDBIC->new(
-        request => $item_request, response => $item_request->new_response,
+        request => $item_request,
+        response => $item_request->new_response,
         set => $self->set,
-        item => $item, id => undef, # XXX dummy id
+        item => $item,
+        id => undef, # XXX dummy id
         prefetch => $self->prefetch,
         throwable => $self->throwable,
         #  XXX others?
     );
+
     $self->response->body( $item_resource->to_json_as_hal );
 
     return;
@@ -139,10 +145,12 @@ sub render_item_as_hal {
                 unless our $warn_once->{"$relname $rel->{source}"}++;
             next;
         }
+
         $data->{_links}{ ($curie?"$curie:":"") . $relname} = {
             href => $self->add_params_to_url($linkurl, {}, {})->as_string
         };
     }
+
     if ($curie) {
        $data->{_links}{curies} = [{
          name => $curie,
@@ -153,6 +161,7 @@ sub render_item_as_hal {
 
     return $data;
 }
+
 
 sub router {
     return shift->request->env->{'plack.router'};
@@ -180,17 +189,19 @@ sub add_params_to_url {
 
         push @params, $param => $req_params->get($param);
     }
+
     my $uri = URI->new($base);
     $uri->query_form(@params);
+
     return $uri;
 }
 
 
-sub finish_request {
+sub finish_request {    # exception handling
     my ($self, $metadata) = @_;
 
     my $exception = $metadata->{'exception'};
-    return unless $exception;
+    return unless $exception; # normal case
 
     if (blessed($exception) && $exception->can('as_psgi')) {
         my ($status, $headers, $body) = @{ $exception->as_psgi };
@@ -202,6 +213,10 @@ sub finish_request {
 
     #$exception->rethrow if ref $exception and $exception->can('rethrow');
     #die $exception if ref $exception;
+
+    # Here we try to extract useful information out error messages that
+    # we can recognise and then override the default response with something
+    # more useful - otherwise we leave the response untouched to get the default
 
     (my $line1 = $exception) =~ s/\n.*//ms;
 
@@ -226,14 +241,19 @@ sub finish_request {
     warn "finish_request is handling exception: $line1 (@{[ %{ $error_data||{} } ]})\n";
 
     if ($error_data) {
-        $error_data->{_embedded}{exceptions}[0]{exception} = "$exception" # stringify
-            unless $ENV{TL_ENVIRONMENT} eq 'production'; # don't leak info
+
+        # uncomment to include the actual exception in the response
+        # this might leak sensitive information, so don't do that in production
+        #$error_data->{_embedded}{exceptions}[0]{exception} = "$exception" # stringify
+
         $error_data->{status} ||= 500;
+
         # create response
         my $json = JSON->new->ascii->pretty;
+        my $body = $json->encode($error_data);
+
         my $response = $self->response;
         $response->status($error_data->{status});
-        my $body = $json->encode($error_data);
         $response->body($body);
         $response->content_length(length $body);
         $response->content_type('application/hal+json');
