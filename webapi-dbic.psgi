@@ -4,7 +4,7 @@ use Plack::App::File;
 
 use Devel::Dwarn;
 
-my $app = require TigerLead::ClientsDS::WebApp;
+my $app = require WebAPI::DBIC::WebApp;
 
 my $app_prefix = "/clients/v1";
 
